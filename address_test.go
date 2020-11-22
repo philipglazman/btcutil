@@ -655,6 +655,30 @@ func TestAddresses(t *testing.T) {
 			},
 			net: &customParams,
 		},
+		// Taproot scripts
+		{
+			name: "testnet p2tr witness v1",
+			addr:    "tb1p5kaqsuted66fldx256lh3en4h9z4uttxuagkwepqlqup6hw639gsr0ap2q",
+			encoded: "tb1p5kaqsuted66fldx256lh3en4h9z4uttxuagkwepqlqup6hw639gsr0ap2q",
+			valid:   true,
+			result: btcutil.TstAddressTaproot(
+				1,
+				[32]byte{
+					0xa5, 0xba, 0x8, 0x71, 0x79, 0x6e, 0xb4, 0x9f, 0xb4, 0xca,
+					0xa6, 0xbf, 0x78, 0xe6, 0x75, 0xb9, 0x45, 0x5e, 0x2d, 0x66,
+					0xe7, 0x51, 0x67, 0x64, 0x20, 0xf8, 0x38, 0x1d, 0x5d, 0xda,
+					0x89, 0x51},
+				chaincfg.TestNet3Params.Bech32HRPSegwit),
+			f: func() (btcutil.Address, error) {
+				publicKey := []byte{
+					0xa5, 0xba, 0x8, 0x71, 0x79, 0x6e, 0xb4, 0x9f, 0xb4, 0xca,
+					0xa6, 0xbf, 0x78, 0xe6, 0x75, 0xb9, 0x45, 0x5e, 0x2d, 0x66,
+					0xe7, 0x51, 0x67, 0x64, 0x20, 0xf8, 0x38, 0x1d, 0x5d, 0xda,
+					0x89, 0x51}
+				return btcutil.NewAddressTaproot(publicKey, &chaincfg.TestNet3Params)
+			},
+			net: &chaincfg.TestNet3Params,
+		},
 		// Unsupported witness versions (version 0 only supported at this point)
 		{
 			name:  "segwit mainnet witness v1",
@@ -788,6 +812,8 @@ func TestAddresses(t *testing.T) {
 				saddr = btcutil.TstAddressSegwitSAddr(encoded)
 			case *btcutil.AddressWitnessScriptHash:
 				saddr = btcutil.TstAddressSegwitSAddr(encoded)
+			case *btcutil.AddressTaproot:
+				saddr = btcutil.TstAddressSegwitSAddr(encoded)
 			}
 
 			// Check script address, as well as the Hash160 method for P2PKH and
@@ -840,6 +866,25 @@ func TestAddresses(t *testing.T) {
 				}
 
 				expVer := test.result.(*btcutil.AddressWitnessScriptHash).WitnessVersion()
+				if v := a.WitnessVersion(); v != expVer {
+					t.Errorf("%v: witness versions do not match:\n%x != \n%x",
+						test.name, expVer, v)
+					return
+				}
+
+				if p := a.WitnessProgram(); !bytes.Equal(saddr, p) {
+					t.Errorf("%v: witness programs do not match:\n%x != \n%x",
+						test.name, saddr, p)
+					return
+				}
+			case *btcutil.AddressTaproot:
+				if hrp := a.Hrp(); test.net.Bech32HRPSegwit != hrp {
+					t.Errorf("%v: hrps do not match:\n%x != \n%x",
+						test.name, test.net.Bech32HRPSegwit, hrp)
+					return
+				}
+
+				expVer := test.result.(*btcutil.AddressTaproot).WitnessVersion()
 				if v := a.WitnessVersion(); v != expVer {
 					t.Errorf("%v: witness versions do not match:\n%x != \n%x",
 						test.name, expVer, v)

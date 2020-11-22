@@ -77,6 +77,14 @@ func TstAddressWitnessScriptHash(version byte, program [32]byte,
 	}
 }
 
+func TstAddressTaproot(version byte, program [32]byte,
+	hrp string) *AddressTaproot {
+		return &AddressTaproot{
+			hrp:            hrp,
+			witnessVersion: version,
+			witnessProgram: program,
+		}
+}
 // TstAddressPubKey makes an AddressPubKey, setting the unexported fields with
 // the parameters.
 func TstAddressPubKey(serializedPubKey []byte, pubKeyFormat PubKeyFormat,
@@ -98,7 +106,7 @@ func TstAddressSAddr(addr string) []byte {
 }
 
 // TstAddressSegwitSAddr returns the expected witness program bytes for
-// bech32 encoded P2WPKH and P2WSH bitcoin addresses.
+// bech32 encoded P2WPKH, P2WSH, and P2TR bitcoin addresses.
 func TstAddressSegwitSAddr(addr string) []byte {
 	_, data, err := bech32.Decode(addr)
 	if err != nil {

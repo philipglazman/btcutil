@@ -148,9 +148,10 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 				return nil, err
 			}
 
-			// We currently only support P2WPKH and P2WSH, which is
-			// witness version 0.
-			if witnessVer != 0 {
+			switch witnessVer {
+			case 0: // P2WPKH and P2WSH use witness version 0.
+			case 1: // P2TR use witness version 1.
+			default:
 				return nil, UnsupportedWitnessVerError(witnessVer)
 			}
 
@@ -161,7 +162,12 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 			case 20:
 				return newAddressWitnessPubKeyHash(hrp, witnessProg)
 			case 32:
-				return newAddressWitnessScriptHash(hrp, witnessProg)
+				switch witnessVer {
+				case 0:
+					return newAddressWitnessScriptHash(hrp, witnessProg)
+				case 1:
+					return newAddressTaproot(hrp, witnessProg)
+				}
 			default:
 				return nil, UnsupportedWitnessProgLenError(len(witnessProg))
 			}
@@ -244,6 +250,12 @@ func decodeSegWitAddress(address string) (byte, []byte, error) {
 	if version == 0 && len(regrouped) != 20 && len(regrouped) != 32 {
 		return 0, nil, fmt.Errorf("invalid data length for witness "+
 			"version 0: %v", len(regrouped))
+	}
+
+	// For witness version 1, address MUST be 32 bytes.
+	if version == 1 && len(regrouped) != 32 {
+		return 0, nil, fmt.Errorf("invalid data length for witness "+
+			"version 1: %v", len(regrouped))
 	}
 
 	return version, regrouped, nil
@@ -679,5 +691,90 @@ func (a *AddressWitnessScriptHash) WitnessVersion() byte {
 
 // WitnessProgram returns the witness program of the AddressWitnessScriptHash.
 func (a *AddressWitnessScriptHash) WitnessProgram() []byte {
+	return a.witnessProgram[:]
+}
+
+// AddressTaproot is an Address for a pay-to-taproot
+// (P2TR) output. See BIP 341 for further details regarding native segregated
+// witness address encoding:
+// https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki
+type AddressTaproot struct {
+	hrp            string
+	witnessVersion byte
+	witnessProgram [32]byte
+}
+
+// NewAddressTaproot returns a new AddressTaproot.
+func NewAddressTaproot(witnessProg []byte, net *chaincfg.Params) (*AddressTaproot, error) {
+	return newAddressTaproot(net.Bech32HRPSegwit, witnessProg)
+}
+
+// newaddressTaproot is an internal helper function to create an
+// AddressTaproot with a known human-readable part, rather than
+// looking it up through its parameters.
+func newAddressTaproot(hrp string, witnessProg []byte) (*AddressTaproot, error) {
+	// Check for valid program length for witness version 1, which is 32
+	// for P2TR.
+	if len(witnessProg) != 32 {
+		return nil, errors.New("witness program must be 32 " +
+			"bytes for p2tr")
+	}
+
+	addr := &AddressTaproot{
+		hrp:            strings.ToLower(hrp),
+		witnessVersion: 0x01,
+	}
+
+	copy(addr.witnessProgram[:], witnessProg)
+
+	return addr, nil
+}
+
+// EncodeAddress returns the bech32 string encoding of an
+// AddressTaproot.
+// Part of the Address interface.
+func (a *AddressTaproot) EncodeAddress() string {
+	str, err := encodeSegWitAddress(a.hrp, a.witnessVersion,
+		a.witnessProgram[:])
+	if err != nil {
+		return ""
+	}
+	return str
+}
+
+// ScriptAddress returns the witness program for this address.
+// Part of the Address interface.
+func (a *AddressTaproot) ScriptAddress() []byte {
+	return a.witnessProgram[:]
+}
+
+// IsForNet returns whether or not the AddressTaproot is associated
+// with the passed bitcoin network.
+// Part of the Address interface.
+func (a *AddressTaproot) IsForNet(net *chaincfg.Params) bool {
+	return a.hrp == net.Bech32HRPSegwit
+}
+
+// String returns a human-readable string for the AddressTaproot.
+// This is equivalent to calling EncodeAddress, but is provided so the type
+// can be used as a fmt.Stringer.
+// Part of the Address interface.
+func (a *AddressTaproot) String() string {
+	return a.EncodeAddress()
+}
+
+// Hrp returns the human-readable part of the bech32 encoded
+// AddressTaproot.
+func (a *AddressTaproot) Hrp() string {
+	return a.hrp
+}
+
+// WitnessVersion returns the witness version of the AddressTaproot.
+func (a *AddressTaproot) WitnessVersion() byte {
+	return a.witnessVersion
+}
+
+// WitnessProgram returns the witness program of the AddressTaproot.
+func (a *AddressTaproot) WitnessProgram() []byte {
 	return a.witnessProgram[:]
 }
